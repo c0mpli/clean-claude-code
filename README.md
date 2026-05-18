@@ -77,6 +77,8 @@ Every language folder contains roughly:
 10. **`09-configuration.md`** — typed config, secrets, layered loading, per-environment overrides
 11. **`10-logging.md`** — logger-per-module, level semantics, structured output, observability
 12. **`11-dates-money.md`** — `Decimal` for currency, timezone-aware datetimes, ISO 8601 at boundaries
+13. **`12-api-design.md`** — resource URLs, status codes, RFC 7807 errors, cursor pagination, idempotency keys
+14. **`13-concurrency.md`** — async/threads/processes decision tree, TaskGroup, semaphores, cancellation
 
 Files are numbered so a single `cat */*.md` gives sensible flow.
 

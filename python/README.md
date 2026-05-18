@@ -23,6 +23,8 @@ A prescriptive style guide distilled from a deep read of [ArjanCodes/examples](h
 | `09-configuration.md` | `pydantic-settings`, layered loading, `SecretStr`, per-env overrides, anti-patterns. |
 | `10-logging.md` | Logger-per-module, level semantics, structured context, JSON in prod, correlation IDs. |
 | `11-dates-money.md` | `Decimal` for money, `Money(amount, currency)`, timezone-aware `datetime`, `zoneinfo`, ISO 8601 at boundaries. |
+| `12-api-design.md` | Resource-noun URLs, status codes, RFC 7807 errors, cursor pagination, idempotency keys, OpenAPI from code. |
+| `13-concurrency.md` | async vs threads vs processes decision tree, TaskGroup, semaphores, queues, cancellation safety, anti-patterns. |
 
 The raw study notes (descriptive, not prescriptive) live at `../ArjanCodes-Patterns.md`.
 
