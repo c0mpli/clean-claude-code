@@ -25,6 +25,9 @@ A prescriptive style guide distilled from a deep read of [ArjanCodes/examples](h
 | `11-dates-money.md` | `Decimal` for money, `Money(amount, currency)`, timezone-aware `datetime`, `zoneinfo`, ISO 8601 at boundaries. |
 | `12-api-design.md` | Resource-noun URLs, status codes, RFC 7807 errors, cursor pagination, idempotency keys, OpenAPI from code. |
 | `13-concurrency.md` | async vs threads vs processes decision tree, TaskGroup, semaphores, queues, cancellation safety, anti-patterns. |
+| `14-project-structure.md` | `src/` layout, `pyproject.toml`, `uv`, `ruff` + `pyright` strict configs, `pre-commit`, CI minimal. |
+| `15-security.md` | Parameterized SQL, `subprocess` list args, `SecretStr`, `argon2`, JWT pitfalls, SSRF, file upload safety. |
+| `16-database.md` | N+1 fix with eager loading, indexing, connection pooling, transactions, Alembic, repository at boundary. |
 
 The raw study notes (descriptive, not prescriptive) live at `../ArjanCodes-Patterns.md`.
 
