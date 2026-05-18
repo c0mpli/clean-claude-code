@@ -1,11 +1,5 @@
 # clean-claude-code
 
-> Prescriptive coding-style guides per language, designed to be loaded as `CLAUDE.md` or system prompts so Claude writes code that's small, readable, type-safe, and humans-actually-love-it good.
-
-Every guide is **prescriptive** ("do X / never Y"), **example-driven** (before/after code, not abstract advice), and **dense** — every line earns its place.
-
----
-
 ## Why this exists
 
 Out of the box, LLMs default to writing the most common Python on the internet — which is mediocre. You can get dramatically better output by handing the model a tight style guide. This repo is a curated set of those guides, one per language.
