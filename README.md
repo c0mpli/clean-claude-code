@@ -74,6 +74,8 @@ Every language folder contains roughly:
 7. **`06-refactoring-recipes.md`** — symptom → cure table
 8. **`07-modern-<language>.md`** — modern features to prefer
 9. **`08-testing.md`** — how to test, with the framework that's standard for the language
+10. **`09-configuration.md`** — typed config, secrets, layered loading, per-environment overrides
+11. **`10-logging.md`** — logger-per-module, level semantics, structured output, observability
 
 Files are numbered so a single `cat */*.md` gives sensible flow.
 
