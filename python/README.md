@@ -20,6 +20,8 @@ A prescriptive style guide distilled from a deep read of [ArjanCodes/examples](h
 | `06-refactoring-recipes.md` | 29 symptom → cure recipes. When you see X, do Y. |
 | `07-modern-python.md` | PEP 695 generics, walrus, `Self`, `removeprefix`, `X \| None`, `match`. |
 | `08-testing.md` | pytest, AAA, parametrize, fixtures, fakes-over-mocks, refactoring for testability. |
+| `09-configuration.md` | `pydantic-settings`, layered loading, `SecretStr`, per-env overrides, anti-patterns. |
+| `10-logging.md` | Logger-per-module, level semantics, structured context, JSON in prod, correlation IDs. |
 
 The raw study notes (descriptive, not prescriptive) live at `../ArjanCodes-Patterns.md`.
 
