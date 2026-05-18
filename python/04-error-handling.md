@@ -91,6 +91,37 @@ async def create_user(req: CreateUserRequest) -> User:
 
 Once a value has been through Pydantic, downstream code trusts it. If you find yourself re-checking `if user.email is None` inside the service, the boundary types are wrong.
 
+### Every public method validates its preconditions
+
+The "system boundary" rule extends to **every public method**: validate the inputs you don't already trust by type. Private helpers (prefixed `_`) trust their callers — the public surface protects them.
+
+```python
+@dataclass(frozen=True)
+class VehicleInfo:
+    brand: str
+    electric: bool
+    catalogue_price: Decimal
+
+    def compute_tax(self, exemption: Decimal = Decimal("0")) -> Decimal:
+        if exemption < 0:
+            raise ValueError(f"exemption must be non-negative, got {exemption}")
+        return self._tax_rate() * max(self.catalogue_price - exemption, Decimal("0"))
+
+    def can_lease(self, year_income: Decimal) -> bool:
+        if year_income < 0:
+            raise ValueError(f"year_income must be non-negative, got {year_income}")
+        return self.catalogue_price <= year_income * Decimal("0.7")
+
+    def _tax_rate(self) -> Decimal:                          # private — trusts the caller
+        return Decimal("0.02") if self.electric else Decimal("0.05")
+```
+
+The type hint says `Decimal`. The precondition check says *which* `Decimal`s are valid. Types narrow the space; preconditions narrow it further.
+
+Two practical rules:
+- The check is **at the top of the method**, not deep inside. Fail at the entry, not after three operations.
+- The error message **names the parameter and shows the bad value**. `"exemption must be non-negative, got -100"` is debuggable; `"invalid input"` is not.
+
 ---
 
 ## Result types — for expected failure

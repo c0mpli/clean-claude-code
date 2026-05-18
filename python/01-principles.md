@@ -235,4 +235,83 @@ def find_vehicle(self, brand: str, model: str) -> VehicleInfo | None:
 - **Use the walrus operator `:=` for assign-and-test.** Makes "get-or-fail" patterns concise.
 - **Prefer `match` for shape-based dispatch.** When `isinstance` is unavoidable, `match` makes it readable.
 
+---
+
+## High cohesion, low coupling
+
+Underneath every rule above is the same goal: each unit (function, class, module) should be **highly cohesive** (everything inside is about one thing) and **loosely coupled** (it doesn't reach into the guts of other units).
+
+```python
+# BAD — Application is a god class: ID generation, price lookup, tax math, formatting
+class Application:
+    def register_vehicle(self, brand: str) -> None:
+        vehicle_id = "".join(random.choices(string.ascii_uppercase, k=12))
+        license_plate = f"{vehicle_id[:2]}-{...}-{...}"
+        catalogue_price = 0
+        if brand == "Tesla Model 3":   catalogue_price = 60_000
+        elif brand == "Volkswagen ID3": catalogue_price = 35_000
+        elif brand == "BMW 5":          catalogue_price = 45_000
+        tax_percentage = 0.02 if brand in {"Tesla Model 3", "Volkswagen ID3"} else 0.05
+        payable_tax = tax_percentage * catalogue_price
+        print(f"Brand: {brand}")
+        print(f"Id: {vehicle_id}")
+        print(f"License plate: {license_plate}")
+        print(f"Payable tax: {payable_tax}")
+
+# GOOD — each class owns one concern
+@dataclass(frozen=True)
+class VehicleInfo:
+    brand: str
+    electric: bool
+    catalogue_price: Decimal
+
+    def compute_tax(self) -> Decimal:
+        rate = Decimal("0.02") if self.electric else Decimal("0.05")
+        return rate * self.catalogue_price
+
+@dataclass(frozen=True)
+class Vehicle:
+    id: str
+    license_plate: str
+    info: VehicleInfo
+
+class VehicleRegistry:
+    def __init__(self) -> None:
+        self._catalog: dict[str, VehicleInfo] = {
+            "Tesla Model 3":   VehicleInfo("Tesla Model 3",   electric=True,  catalogue_price=Decimal("60000")),
+            "Volkswagen ID3":  VehicleInfo("Volkswagen ID3",  electric=True,  catalogue_price=Decimal("35000")),
+            "BMW 5":           VehicleInfo("BMW 5",           electric=False, catalogue_price=Decimal("45000")),
+        }
+
+    def create_vehicle(self, brand: str) -> Vehicle:
+        return Vehicle(id=generate_id(12), license_plate=generate_license(), info=self._catalog[brand])
+
+class Application:
+    def __init__(self, registry: VehicleRegistry) -> None:
+        self.registry = registry
+
+    def register_vehicle(self, brand: str) -> Vehicle:
+        return self.registry.create_vehicle(brand)
+```
+
+Indicators of low cohesion: a class with a `do_everything()` method, methods that don't share fields, comments labelling sections inside one class. Indicators of high coupling: changing one class forces edits in three others, tests need to construct half the system to exercise one method.
+
+The fix is always the same: **extract the responsibility into its own type and depend on it through a small interface**.
+
+---
+
+## SOLID — how this guide maps
+
+The rules above cover SOLID, with different names. When a reviewer cites SOLID, point at the corresponding rule:
+
+| SOLID | Where it lives in this guide |
+|---|---|
+| **S**ingle Responsibility | Rule #1 + all of `02-functions.md` + the cohesion section above |
+| **O**pen/Closed | Rule #2 + Strategy / Factory in `05-design-patterns.md` |
+| **L**iskov Substitution | Recipe R28 in `06-refactoring-recipes.md` |
+| **I**nterface Segregation | Recipe R27 in `06-refactoring-recipes.md` |
+| **D**ependency Inversion | Recipe R26 + the DI section in `05-design-patterns.md` |
+
+---
+
 These principles aren't aspirations. They're the floor. Code that violates them is incorrect and needs to be rewritten.

@@ -12,13 +12,14 @@ A prescriptive style guide distilled from a deep read of [ArjanCodes/examples](h
 
 | File | What's in it |
 |---|---|
-| `01-principles.md` | The 12 non-negotiable rules. Start here. Brief examples, links to deep dives. |
+| `01-principles.md` | The 12 non-negotiable rules, plus cohesion/coupling and a SOLID rosetta. Start here. |
 | `02-functions.md` | Function design and single-responsibility. **The most important file.** |
 | `03-data-types.md` | Dataclasses, Pydantic, Enum, Protocol, generics, `@property`. |
-| `04-error-handling.md` | Custom exceptions with context, Result types, fail-fast validation. |
-| `05-design-patterns.md` | Repository, Factory, Builder, Strategy via Protocol, DI, CQRS. |
-| `06-refactoring-recipes.md` | Symptom → cure table. When you see X, do Y. |
+| `04-error-handling.md` | Custom exceptions with context, Result types, precondition validation. |
+| `05-design-patterns.md` | Repository, Factory, Builder, Strategy, DIP+DI, Template Method, Bridge, MVC, CQRS. |
+| `06-refactoring-recipes.md` | 29 symptom → cure recipes. When you see X, do Y. |
 | `07-modern-python.md` | PEP 695 generics, walrus, `Self`, `removeprefix`, `X \| None`, `match`. |
+| `08-testing.md` | pytest, AAA, parametrize, fixtures, fakes-over-mocks, refactoring for testability. |
 
 The raw study notes (descriptive, not prescriptive) live at `../ArjanCodes-Patterns.md`.
 

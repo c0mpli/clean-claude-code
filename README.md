@@ -79,6 +79,7 @@ Every language folder contains roughly:
 6. **`05-design-patterns.md`** — when and how to apply each
 7. **`06-refactoring-recipes.md`** — symptom → cure table
 8. **`07-modern-<language>.md`** — modern features to prefer
+9. **`08-testing.md`** — how to test, with the framework that's standard for the language
 
 Files are numbered so a single `cat */*.md` gives sensible flow.
 

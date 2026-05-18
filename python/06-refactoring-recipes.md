@@ -595,6 +595,185 @@ def create_user(email: str, password: str, *, options: UserOptions = UserOptions
 
 ---
 
+## R26. Concrete dependency in constructor → inject the abstraction (DIP)
+
+**Symptom:**
+```python
+class Switch:
+    def __init__(self, bulb: LightBulb) -> None:    # tied to LightBulb forever
+        self.bulb = bulb
+    def press(self) -> None:
+        self.bulb.turn_on()
+```
+
+**Cure:**
+```python
+class Switchable(Protocol):
+    def turn_on(self) -> None: ...
+    def turn_off(self) -> None: ...
+
+class Switch:
+    def __init__(self, device: Switchable) -> None:
+        self.device = device
+    def press(self) -> None:
+        self.device.turn_on()
+
+# Now any Switchable works:
+Switch(LightBulb()).press()
+Switch(Fan()).press()
+Switch(FakeSwitchable()).press()   # tests
+```
+
+**Heuristic:** if your class names a concrete collaborator in its constructor and the test for that class needs to construct the real collaborator (database, HTTP client, third-party SDK), the dependency should be an abstraction.
+
+---
+
+## R27. Fat interface forcing empty / raising methods → split into focused Protocols (ISP)
+
+**Symptom:**
+```python
+class PaymentProcessor(ABC):
+    @abstractmethod
+    def auth_sms(self, code: str) -> None: ...
+    @abstractmethod
+    def pay(self, order: Order) -> None: ...
+
+class CreditPaymentProcessor(PaymentProcessor):
+    def auth_sms(self, code: str) -> None:
+        raise NotImplementedError("Credit cards don't support SMS")  # smell
+    def pay(self, order: Order) -> None: ...
+```
+
+If a subclass has to raise `NotImplementedError` (or silently do nothing), the interface is too big.
+
+**Cure:** split the interface along the lines of who needs what.
+
+```python
+class PaymentProcessor(Protocol):
+    def pay(self, order: Order) -> None: ...
+
+class SMSAuthenticator(Protocol):
+    def auth_sms(self, code: str) -> None: ...
+
+class CreditPaymentProcessor:
+    def pay(self, order: Order) -> None: ...
+    # no auth_sms — credit cards don't need it
+
+@dataclass
+class DebitPaymentProcessor:                          # implements both
+    authenticator: SMSAuthenticator
+    def auth_sms(self, code: str) -> None: self.authenticator.auth_sms(code)
+    def pay(self, order: Order) -> None: ...
+```
+
+Now `CreditPaymentProcessor` only satisfies the interfaces it actually fulfils. Callers requiring SMS auth ask for `SMSAuthenticator`; callers requiring payment ask for `PaymentProcessor`. The type system enforces it.
+
+---
+
+## R28. Subclass that breaks the parent's contract → composition (LSP)
+
+**Symptom:** A subclass changes inherited behavior in a way that surprises callers — different return type, narrower accepted input, raises where the parent doesn't.
+
+```python
+# Classic LSP violation: Square "is-a" Rectangle, but set_width breaks set_height's invariant
+class Rectangle:
+    def __init__(self, width: float, height: float) -> None:
+        self.width = width
+        self.height = height
+    def set_width(self, w: float) -> None:  self.width = w
+    def set_height(self, h: float) -> None: self.height = h
+
+class Square(Rectangle):
+    def set_width(self, w: float) -> None:  self.width = self.height = w   # mutates height!
+    def set_height(self, h: float) -> None: self.width = self.height = h
+
+# Code that works for Rectangle now silently breaks for Square:
+def expand(rect: Rectangle) -> None:
+    rect.set_width(10)
+    rect.set_height(5)
+    assert rect.width == 10 and rect.height == 5     # fails for Square
+```
+
+**Cure:** drop the inheritance. Define a shared abstraction; both implement it independently.
+
+```python
+class Shape(Protocol):
+    def area(self) -> float: ...
+
+@dataclass(frozen=True)
+class Rectangle:
+    width: float
+    height: float
+    def area(self) -> float: return self.width * self.height
+
+@dataclass(frozen=True)
+class Square:
+    side: float
+    def area(self) -> float: return self.side ** 2
+```
+
+**Heuristic:** if a subclass's method has to violate the parent's documented contract — different exceptions, different invariants, different return shape — you wanted composition, not inheritance.
+
+---
+
+## R29. God class doing 5 things → extract by responsibility (cohesion)
+
+**Symptom:**
+```python
+class Application:
+    def register_vehicle(self, brand: str) -> None:
+        # generate id
+        vehicle_id = "".join(random.choices(string.ascii_uppercase, k=12))
+        # generate license plate
+        license_plate = f"{vehicle_id[:2]}-{...}-{...}"
+        # look up price
+        if brand == "Tesla Model 3":   catalogue_price = 60_000
+        elif brand == "Volkswagen ID3": catalogue_price = 35_000
+        elif brand == "BMW 5":          catalogue_price = 45_000
+        # compute tax
+        tax_percentage = 0.02 if brand in {"Tesla Model 3", "Volkswagen ID3"} else 0.05
+        payable_tax = tax_percentage * catalogue_price
+        # print
+        print(f"Brand: {brand}, id: {vehicle_id}, plate: {license_plate}, tax: {payable_tax}")
+```
+
+Five comment-labelled sections in one method — five responsibilities.
+
+**Cure:** every comment becomes a class or function with a name.
+
+```python
+@dataclass(frozen=True)
+class VehicleInfo:
+    brand: str
+    electric: bool
+    catalogue_price: Decimal
+    def compute_tax(self) -> Decimal:
+        rate = Decimal("0.02") if self.electric else Decimal("0.05")
+        return rate * self.catalogue_price
+
+@dataclass(frozen=True)
+class Vehicle:
+    id: str
+    license_plate: str
+    info: VehicleInfo
+
+class VehicleRegistry:
+    def __init__(self) -> None:
+        self._catalog: dict[str, VehicleInfo] = {...}
+    def create_vehicle(self, brand: str) -> Vehicle:
+        return Vehicle(id=generate_id(12), license_plate=generate_license(), info=self._catalog[brand])
+
+class Application:
+    def __init__(self, registry: VehicleRegistry) -> None:
+        self.registry = registry
+    def register_vehicle(self, brand: str) -> Vehicle:
+        return self.registry.create_vehicle(brand)
+```
+
+Each class is independently testable. `VehicleInfo.compute_tax()` is a pure function of three fields. `Application` becomes a one-line orchestrator.
+
+---
+
 ## Quick lookup table
 
 | Smell | Recipe |
@@ -624,3 +803,7 @@ def create_user(email: str, password: str, *, options: UserOptions = UserOptions
 | `self`-less method | R23 |
 | Inheritance for shared util | R24 |
 | Big optional param list | R25 |
+| Concrete dependency in constructor (DIP) | R26 |
+| Fat interface forcing empty methods (ISP) | R27 |
+| Subclass breaks parent contract (LSP) | R28 |
+| God class with 5 responsibilities | R29 |
