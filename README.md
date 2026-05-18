@@ -79,6 +79,9 @@ Every language folder contains roughly:
 12. **`11-dates-money.md`** — `Decimal` for currency, timezone-aware datetimes, ISO 8601 at boundaries
 13. **`12-api-design.md`** — resource URLs, status codes, RFC 7807 errors, cursor pagination, idempotency keys
 14. **`13-concurrency.md`** — async/threads/processes decision tree, TaskGroup, semaphores, cancellation
+15. **`14-project-structure.md`** — `src/` layout, `pyproject.toml`, `uv`, `ruff` + `pyright` strict, pre-commit
+16. **`15-security.md`** — parameterized SQL, secret hygiene, password hashing, JWT pitfalls, SSRF, uploads
+17. **`16-database.md`** — N+1 + eager loading, indexing, pooling, transactions, Alembic, repository pattern
 
 Files are numbered so a single `cat */*.md` gives sensible flow.
 
