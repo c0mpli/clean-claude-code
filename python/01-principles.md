@@ -234,6 +234,8 @@ def find_vehicle(self, brand: str, model: str) -> VehicleInfo | None:
 - **Replace nested `if`s with early returns.** Reduce indentation depth.
 - **Use the walrus operator `:=` for assign-and-test.** Makes "get-or-fail" patterns concise.
 - **Prefer `match` for shape-based dispatch.** When `isinstance` is unavoidable, `match` makes it readable.
+- **`Decimal` for money. Timezone-aware `datetime`, always.** Never `float` for currency; never `datetime.now()` without `tz=UTC`. See `11-dates-money.md`.
+- **Docstrings only when there's a contract to state.** Type hints already document types; don't restate them. See `02-functions.md` for the rule.
 
 ---
 
