@@ -6,10 +6,14 @@ How to lay out a Python project so adding a file is obvious, running tests is on
 
 ## The layout
 
+Two layouts are common; pick based on whether the project is **packaged** (built into a wheel, installed, distributed) or **deployed as-is** (containerized service, internal app, script).
+
+### `src/` layout — for packaged code (libraries, CLI tools, anything you `pip install`)
+
 ```
 my-project/
 ├── src/
-│   └── my_project/                 ← the package; underscores, not dashes
+│   └── my_project/                 ← the package; underscores (dashes aren't valid Python identifiers)
 │       ├── __init__.py
 │       ├── api/
 │       ├── billing/
@@ -19,21 +23,63 @@ my-project/
 │   ├── conftest.py
 │   ├── api/
 │   └── billing/                    ← mirrors src/my_project/
-├── scripts/                        ← one-off scripts, not shipped
-├── docs/                           ← optional; mkdocs / sphinx output
-├── .env.example                    ← committed; .env is gitignored
-├── .gitignore
-├── .pre-commit-config.yaml
-├── pyproject.toml                  ← single source of truth
-├── uv.lock                         ← committed
+├── pyproject.toml
+├── uv.lock
 └── README.md
 ```
 
-**Always `src/`.** It prevents accidental imports of in-progress code from the repo root, forces you to install the package to use it, and matches the most-tested layout in the tooling ecosystem.
+Why `src/`: importing `my_project` from the repo root **fails** until you install the package. That forces tests to run against the installed wheel — same code path as production. Packaging bugs (missing files in `pyproject.toml`'s package config, missing `__init__.py`) surface at install time, not in production.
 
-**`tests/` outside the package.** Not `src/my_project/tests/`. Tests don't ship.
+Default for libraries, CLI tools, and any project that ships a wheel.
 
-**`tests/` mirrors `src/my_project/`.** `src/my_project/billing/invoice.py` is tested by `tests/billing/test_invoice.py`. One test file per module. Easy to navigate.
+### Flat layout — for deployed services and scripts
+
+```
+my-project/
+├── my_project/                     ← package at the repo root
+│   ├── __init__.py
+│   ├── api/
+│   ├── billing/
+│   └── main.py
+├── tests/
+├── pyproject.toml
+├── uv.lock
+└── README.md
+```
+
+Fine when the **codebase is the deploy artifact** — containerized web services, scripts, internal apps where you `uvicorn my_project.main:app` (or equivalent) and never build a wheel. Simpler — no extra directory level — and no packaging-correctness concerns because nothing is being packaged.
+
+### How to decide
+
+| Project | Use |
+|---|---|
+| Library on PyPI | `src/` |
+| CLI tool distributed via `pip install` / `uv tool install` | `src/` |
+| Web service in a container, deployed via Docker / k8s | flat is fine; `src/` also works |
+| Internal app, never installed | flat |
+| Single-script tool, notebooks, data exploration | flat (or no package at all) |
+| You're not sure | `src/` — slightly more setup, catches more bugs |
+
+The rest of this file is layout-agnostic — `pyproject.toml`, `uv`, `ruff`, `pyright`, `pre-commit` all work identically either way.
+
+### Other conventions, both layouts
+
+**Package name:** underscores, lowercase. Dashes aren't valid in Python identifiers — `import my-project` is a syntax error. The distribution name in `pyproject.toml` (`name = "my-project"`) can use dashes; the directory on disk must use underscores.
+
+**`tests/` outside the package**, not `src/my_project/tests/` or `my_project/tests/`. Tests don't ship.
+
+**`tests/` mirrors the package.** `my_project/billing/invoice.py` is tested by `tests/billing/test_invoice.py`. One test file per module.
+
+**Other directories:**
+
+```
+my-project/
+├── scripts/                        ← one-off scripts, not shipped
+├── docs/                           ← optional; mkdocs / sphinx
+├── .env.example                    ← committed; .env is gitignored
+├── .gitignore
+└── .pre-commit-config.yaml
+```
 
 ---
 
@@ -441,7 +487,7 @@ Deviate only with a reason.
 
 | Symptom | Fix |
 |---|---|
-| Package at the repo root (no `src/`) | `src/<package_name>/` |
+| Library / CLI tool without `src/` | Switch to `src/` layout so tests run against the installed package |
 | `setup.py` + `requirements.txt` + `Pipfile` | One `pyproject.toml` |
 | `pip install -r` in CI | `uv sync` |
 | No lockfile committed | `uv.lock` in version control |
