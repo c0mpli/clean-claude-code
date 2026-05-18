@@ -574,6 +574,155 @@ def complete_todo(todo_id: int, service: TodoService = Depends(...)) -> None:
 
 ---
 
+## Decorators — cross-cutting concerns
+
+**Problem:** Behavior that needs to wrap many unrelated functions — retry, caching, timing, auth checks, deprecation warnings. Repeating it inline at every call site is duplication; making the wrapped function know about it breaks single responsibility.
+
+**Pattern:** A decorator is a function that takes a callable and returns a wrapped callable.
+
+### The non-negotiables
+
+1. **Always `@functools.wraps(func)`.** Without it, the wrapped function loses its name, docstring, and `__module__`. Stack traces and `help()` break.
+2. **Preserve the signature.** Use `ParamSpec` so type checkers see the wrapped function's real parameters, not `(*args, **kwargs)`.
+3. **Don't hide side effects.** A decorator that silently mutates global state or swallows exceptions is a debugging nightmare.
+
+### Basic shape — `functools.wraps` + `ParamSpec`
+
+```python
+from functools import wraps
+from typing import Callable, ParamSpec, TypeVar
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+def timed(func: Callable[P, R]) -> Callable[P, R]:
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        start = time.perf_counter()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            elapsed = time.perf_counter() - start
+            log.info("function call", extra={"func": func.__name__, "elapsed_s": elapsed})
+    return wrapper
+
+
+@timed
+def expensive_op(n: int) -> int:
+    return sum(range(n))
+```
+
+`ParamSpec` is what makes `expensive_op(5)` still type-check as `int`, not `Any`. PEP 695 syntax (3.12+) is cleaner:
+
+```python
+def timed[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R: ...
+    return wrapper
+```
+
+### Parameterized decorators — the closure-of-closures shape
+
+A decorator that takes arguments is a function that *returns* a decorator.
+
+```python
+def retry[**P, R](
+    *,
+    attempts: int = 3,
+    on: type[Exception] | tuple[type[Exception], ...] = Exception,
+    backoff_s: float = 0.5,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            for attempt in range(1, attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except on as e:
+                    if attempt == attempts:
+                        raise
+                    log.warning("retrying", extra={"func": func.__name__, "attempt": attempt, "error": str(e)})
+                    time.sleep(backoff_s * (2 ** (attempt - 1)))
+            raise RuntimeError("unreachable")            # for type checkers
+        return wrapper
+    return decorator
+
+
+@retry(attempts=5, on=(ConnectionError, TimeoutError), backoff_s=1.0)
+def fetch(url: str) -> str: ...
+```
+
+Three layers: the parameter function (`retry`), the decorator (`decorator`), the wrapper (`wrapper`). Always force the parameters to be **keyword-only** (`*,`) so `@retry(attempts=3)` reads sensibly at the call site.
+
+### Common decorator shapes
+
+| Decorator | When | Lives in |
+|---|---|---|
+| `@functools.cache` / `@lru_cache` | Memoize pure function results | stdlib |
+| `@retry` | Transient external failures | `tenacity`, or write your own |
+| `@timed` | Log elapsed time | write your own |
+| `@deprecated` | Mark old API; warn on call | `warnings.warn` |
+| `@property` | Computed attribute | stdlib |
+| `@dataclass` | Generate `__init__`, `__eq__`, etc. | stdlib |
+| `@contextmanager` | Make a function a context manager | `contextlib` |
+
+Prefer the library version (`tenacity` for retry, `functools.cache` for memoization) over hand-rolling. Write your own only when none fits.
+
+### When NOT to write a decorator
+
+Decorators hide control flow. Reach for one only when the wrapper is:
+- **Generic** (works across many functions),
+- **Side-effect-light** (logs, metrics, retries — not "rewrites the result"),
+- **Independent of the wrapped function's domain** (timing knows nothing about your business logic).
+
+```python
+# BAD — decorator does domain-specific work; just call a function
+@require_logged_in
+@charge_customer
+def handle_purchase(req: PurchaseRequest) -> Response: ...
+
+# GOOD — explicit
+def handle_purchase(req: PurchaseRequest, user: User) -> Response:
+    if not user.is_authenticated:
+        raise UnauthenticatedError
+    charge_customer(user, req.amount)
+    ...
+```
+
+The decorator stack hides the order of operations and what happens on each error. Three layers of indirection to read a one-screen function.
+
+### Class decorators
+
+Same shape, applied to classes. Use for systematic transformations across many classes.
+
+```python
+def register[T: type](cls: T) -> T:
+    REGISTRY[cls.__name__] = cls
+    return cls
+
+@register
+class JSONExporter: ...
+
+@register
+class CSVExporter: ...
+```
+
+`@dataclass` is the canonical example — it inspects annotations and synthesizes `__init__`, `__eq__`, `__repr__`. You'll rarely need to write your own class decorator; when you do, it's almost always for registration or boilerplate generation.
+
+### Stacking order
+
+Bottom-up. `@a @b def f(): ...` is `a(b(f))`. The innermost decorator runs first.
+
+```python
+@timed                       # outermost — sees the cached result return time
+@cache                       # checks cache before calling f
+def f(n: int) -> int: ...
+```
+
+Order matters: `@cache @timed` would time only the first call and cache the timing — almost certainly not what you want.
+
+---
+
 ## Decision summary
 
 | If you need... | Use... |
@@ -587,6 +736,7 @@ def complete_todo(todo_id: int, service: TodoService = Depends(...)) -> None:
 | Construct objects with many optional fields | Fluent builder returning `Self` |
 | Inject collaborators | Constructor injection. Framework only if it gets nested |
 | Decouple business logic from persistence + UI | MVC / layered architecture |
+| Cross-cutting concern across many functions | Decorator (with `functools.wraps` + `ParamSpec`) |
 | Transactional multi-repo writes | Unit of Work |
 | Decouple producers from consumers | Event bus |
 | Reads diverge from writes | CQRS |

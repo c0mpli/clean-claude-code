@@ -242,6 +242,129 @@ process()                          # process what, how?
 
 Private functions start with `_`. Module-private helpers exist freely; classes don't need to hold every function.
 
+## Docstrings
+
+Docstrings are not free. They rot, they lie, and they crowd the screen. Write them when the function has a **contract** worth stating — not by default.
+
+### Rule: docstring iff the function is public AND non-trivial
+
+A docstring exists when **both** are true:
+1. The function is part of a public API (importable from a package, exposed via HTTP/CLI, called by code you don't control).
+2. There's a contract beyond the signature: side effects, preconditions, invariants, complexity, units, exceptions raised.
+
+If the signature + name + body fit on one screen and behave as expected, **no docstring**.
+
+```python
+# NO docstring — name + types say everything
+def total_price(items: list[Item]) -> Decimal:
+    return sum((i.unit_price * i.qty for i in items), Decimal("0"))
+
+# NO docstring — private helper
+def _next_id(self) -> int:
+    return max((t.id for t in self.repo.list_all()), default=0) + 1
+```
+
+### Document WHY, contracts, side effects — never WHAT
+
+The type hints already say what the parameters are. The body already says what the function does. The docstring's job is the part neither captures.
+
+```python
+# BAD — restates the obvious; rots the moment behavior changes
+def compute_tax(price: Decimal, rate: Decimal) -> Decimal:
+    """
+    Compute tax.
+
+    Args:
+        price: The price.
+        rate: The rate.
+
+    Returns:
+        The tax.
+    """
+    return price * rate
+
+# GOOD — no docstring needed. Name says it; types say it.
+def compute_tax(price: Decimal, rate: Decimal) -> Decimal:
+    return price * rate
+
+# GOOD — docstring states the contract that types can't
+def transfer(from_account: Account, to_account: Account, amount: Money) -> Transfer:
+    """Atomically debit from_account and credit to_account.
+
+    Acquires both account locks in id order to prevent deadlock. Rolls
+    back the entire transfer if either side fails. Idempotent on retry
+    when called with the same (from, to, amount, request_id) tuple within
+    24 hours.
+
+    Raises:
+        InsufficientFundsError: from_account.balance < amount.
+        CurrencyMismatchError: account currencies differ from amount.currency.
+    """
+    ...
+```
+
+### Format — Google style, one-line for most
+
+Use Google style. It's the cleanest for both humans and LLMs.
+
+```python
+def fetch_user(user_id: int, *, timeout_s: float = 30.0) -> User:
+    """Fetch a user by ID from the upstream identity service.
+
+    Args:
+        user_id: Internal user ID, not the external auth provider ID.
+        timeout_s: Per-request timeout. Retries are not attempted at this layer.
+
+    Returns:
+        The fully hydrated User including roles and tenant membership.
+
+    Raises:
+        UserNotFoundError: No user exists with this ID.
+        IdentityServiceUnavailableError: Upstream returned 5xx or timed out.
+    """
+    ...
+```
+
+For most functions, **one line is enough**:
+
+```python
+def parse_iso_date(s: str) -> date:
+    """Parse an ISO 8601 date. Raises ValueError on malformed input."""
+    ...
+```
+
+Skip the `Args:` / `Returns:` / `Raises:` sections when their content would just be "the same thing the signature already says".
+
+### Module and class docstrings
+
+Module-level docstring: one paragraph at the top, only if the module isn't self-explanatory from its name. `src/billing/invoice.py` doesn't need "This module is about invoices."
+
+Class docstring: state the **role** of the class — what kind of thing it is and what invariants it maintains. Not a list of its methods (the reader can see those).
+
+```python
+class InvoiceService:
+    """Use cases for invoices: create, send, void, and refund.
+
+    Construction requires an InvoiceRepository and a Mailer. Operations
+    are transactional via the repository's Unit of Work; partial failures
+    roll back. Not thread-safe — instantiate per request.
+    """
+```
+
+### Anti-patterns
+
+- **Restating type hints in `Args:`.** `customer_id: Customer's id (int).` — delete.
+- **Mismatched docstring and behavior.** The docstring says "returns None on missing" but the code raises. Now the docstring is a lie. Either delete it or fix one of them.
+- **Multi-paragraph docstrings on three-line functions.** The function is small enough to read. The docstring is bigger than the function. Delete.
+- **Sphinx `:param X:` / `:returns:` syntax.** Verbose, harder to read at a glance than Google style. Pick Google.
+- **Docstrings on every test function.** Tests are named for what they assert. `def test_compute_tax_negative_exemption_raises(): ...` is the docstring.
+
+### The check
+
+If you delete the docstring and a competent reader can still answer "what does this do, what does it assume, what does it promise" from the signature and body — the docstring was noise.
+
+---
+
 ## Function size
 
 There's no hard rule, but in practice:
