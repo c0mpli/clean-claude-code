@@ -76,6 +76,7 @@ Every language folder contains roughly:
 9. **`08-testing.md`** — how to test, with the framework that's standard for the language
 10. **`09-configuration.md`** — typed config, secrets, layered loading, per-environment overrides
 11. **`10-logging.md`** — logger-per-module, level semantics, structured output, observability
+12. **`11-dates-money.md`** — `Decimal` for currency, timezone-aware datetimes, ISO 8601 at boundaries
 
 Files are numbered so a single `cat */*.md` gives sensible flow.
 
