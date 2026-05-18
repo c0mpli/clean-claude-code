@@ -196,9 +196,51 @@ page = (
 
 ---
 
-## Dependency Injection
+## Dependency Inversion (the principle) + Dependency Injection (the technique)
 
-**Problem:** A service needs a database connection / HTTP client / config — but constructing it inline makes testing painful and couples the service to a specific implementation.
+**Principle:** High-level modules don't depend on low-level modules. Both depend on abstractions. Concretions depend on abstractions, never the other way.
+
+```python
+# BAD — Switch depends on a concrete LightBulb. Adding a Fan means editing Switch.
+class LightBulb:
+    def turn_on(self) -> None:  print("LightBulb on")
+    def turn_off(self) -> None: print("LightBulb off")
+
+class Switch:
+    def __init__(self, bulb: LightBulb) -> None:   # tied to LightBulb forever
+        self.bulb = bulb
+        self.on = False
+    def press(self) -> None:
+        if self.on: self.bulb.turn_off()
+        else:       self.bulb.turn_on()
+        self.on = not self.on
+
+# GOOD — both depend on the Switchable abstraction. Add as many devices as you want.
+class Switchable(Protocol):
+    def turn_on(self) -> None: ...
+    def turn_off(self) -> None: ...
+
+@dataclass
+class LightBulb:
+    def turn_on(self) -> None:  print("LightBulb on")
+    def turn_off(self) -> None: print("LightBulb off")
+
+@dataclass
+class Fan:
+    def turn_on(self) -> None:  print("Fan on")
+    def turn_off(self) -> None: print("Fan off")
+
+class Switch:
+    def __init__(self, device: Switchable) -> None:
+        self.device = device
+        self.on = False
+    def press(self) -> None:
+        if self.on: self.device.turn_off()
+        else:       self.device.turn_on()
+        self.on = not self.on
+```
+
+**Technique:** Dependency Injection — pass the dependency in, don't construct it inside.
 
 **Pattern level 1 — constructor injection (lightweight, no framework):**
 
@@ -365,6 +407,173 @@ bus.publish(OrderPaid(order_id="x", amount=Decimal("9.99"), paid_at=now()))
 
 ---
 
+## Template Method
+
+**Problem:** Several variants share the same overall *shape* (read → transform → write) but differ at specific steps. Copy-pasting the skeleton across variants is brittle.
+
+**Pattern:** A base class defines the algorithm's skeleton in one concrete method. Variant steps are `@abstractmethod`. Shared default steps stay concrete and overridable.
+
+```python
+class DataImporter(ABC):
+    def import_data(self, path: Path) -> ImportResult:
+        rows = self.read(path)
+        cleaned = self.clean(rows)
+        self.write(cleaned)
+        return ImportResult(count=len(cleaned), source=path.name)
+
+    @abstractmethod
+    def read(self, path: Path) -> list[dict]: ...
+
+    @abstractmethod
+    def write(self, rows: list[dict]) -> None: ...
+
+    def clean(self, rows: list[dict]) -> list[dict]:        # default; override if needed
+        return [r for r in rows if r]
+
+
+class CSVImporter(DataImporter):
+    def read(self, path: Path) -> list[dict]:
+        return list(csv.DictReader(path.open()))
+
+    def write(self, rows: list[dict]) -> None:
+        target.write_text(json.dumps(rows))
+
+
+class JSONImporter(DataImporter):
+    def read(self, path: Path) -> list[dict]:
+        return json.loads(path.read_text())
+
+    def write(self, rows: list[dict]) -> None:
+        target.write_text(json.dumps(rows, indent=2))
+
+    def clean(self, rows: list[dict]) -> list[dict]:        # JSON nulls → drop the keys
+        return [{k: v for k, v in r.items() if v is not None} for r in rows]
+```
+
+**This is the one place ABC genuinely beats Protocol:** the base method (`import_data`) provides shared implementation. With a `Protocol`, every subclass would re-implement the skeleton.
+
+**When not to use:** if the "skeleton" is one line, the indirection isn't paying for itself — pass a callable instead.
+
+---
+
+## Bridge
+
+**Problem:** Two orthogonal hierarchies — `Shape` × `Renderer`, `Notification` × `Channel`, `Storage` × `Format`. Combining them via inheritance gives N×M classes (`VectorCircle`, `RasterCircle`, `VectorSquare`, `RasterSquare`…).
+
+**Pattern:** Split the two dimensions. One side holds a reference to the other and delegates.
+
+```python
+class Renderer(Protocol):
+    def render_circle(self, radius: float) -> None: ...
+    def render_square(self, side: float) -> None: ...
+
+class VectorRenderer:
+    def render_circle(self, radius: float) -> None:
+        print(f"<circle r={radius}/>")
+    def render_square(self, side: float) -> None:
+        print(f"<rect width={side} height={side}/>")
+
+class RasterRenderer:
+    def render_circle(self, radius: float) -> None:
+        print(f"raster circle r={radius}")
+    def render_square(self, side: float) -> None:
+        print(f"raster square s={side}")
+
+@dataclass(frozen=True)
+class Circle:
+    radius: float
+    def draw(self, renderer: Renderer) -> None:
+        renderer.render_circle(self.radius)
+
+@dataclass(frozen=True)
+class Square:
+    side: float
+    def draw(self, renderer: Renderer) -> None:
+        renderer.render_square(self.side)
+
+
+# Two shape classes + two renderer classes — not four combined classes.
+Circle(radius=5).draw(VectorRenderer())
+Square(side=3).draw(RasterRenderer())
+```
+
+**When to use:** any time you catch yourself naming classes with two adjectives (`FastJSONExporter`, `SlowCSVExporter`, `FastCSVExporter`, `SlowJSONExporter`). Split the adjectives into two hierarchies.
+
+---
+
+## MVC / layered architecture
+
+**Problem:** Business logic, persistence, and presentation entangled in the same module. Changing how a page renders breaks the data layer; adding a database column breaks the UI.
+
+**Pattern:** Three layers, dependencies flow one direction only.
+
+- **Model** — domain data + invariants. Knows nothing about persistence or presentation.
+- **Repository / Service** — orchestrates use cases, talks to storage, enforces transactions.
+- **View / Controller** — translates HTTP / CLI / UI events into service calls, renders the result.
+
+```python
+# --- Model -----------------------------------------------------------
+@dataclass(frozen=True)
+class Todo:
+    id: int
+    title: str
+    done: bool = False
+
+# --- Repository (storage) -------------------------------------------
+class TodoRepository(Protocol):
+    def add(self, todo: Todo) -> None: ...
+    def get(self, todo_id: int) -> Todo | None: ...
+    def list_all(self) -> list[Todo]: ...
+    def mark_done(self, todo_id: int) -> None: ...
+
+class InMemoryTodoRepository:
+    def __init__(self) -> None:
+        self._store: dict[int, Todo] = {}
+    def add(self, todo: Todo) -> None:           self._store[todo.id] = todo
+    def get(self, todo_id: int) -> Todo | None:  return self._store.get(todo_id)
+    def list_all(self) -> list[Todo]:            return list(self._store.values())
+    def mark_done(self, todo_id: int) -> None:
+        todo = self._store[todo_id]
+        self._store[todo_id] = replace(todo, done=True)
+
+# --- Service (use cases) --------------------------------------------
+class TodoService:
+    def __init__(self, repo: TodoRepository) -> None:
+        self.repo = repo
+
+    def create(self, title: str) -> Todo:
+        todo = Todo(id=self._next_id(), title=title)
+        self.repo.add(todo)
+        return todo
+
+    def complete(self, todo_id: int) -> None:
+        if self.repo.get(todo_id) is None:
+            raise TodoNotFoundError(todo_id)
+        self.repo.mark_done(todo_id)
+
+    def _next_id(self) -> int:
+        return max((t.id for t in self.repo.list_all()), default=0) + 1
+
+# --- Controller (HTTP) -----------------------------------------------
+@app.post("/todos")
+def create_todo(req: CreateTodoRequest, service: TodoService = Depends(...)) -> TodoView:
+    todo = service.create(title=req.title)
+    return TodoView.from_model(todo)
+
+@app.post("/todos/{todo_id}/complete")
+def complete_todo(todo_id: int, service: TodoService = Depends(...)) -> None:
+    try:
+        service.complete(todo_id)
+    except TodoNotFoundError:
+        raise HTTPException(status_code=404)
+```
+
+**The discipline:** `Todo` (model) doesn't import from the service. The service doesn't import from the controller. The repository talks to storage and exposes the model — never a view. Reversing this ruins testability.
+
+**Why this matters:** to test the service, you pass `InMemoryTodoRepository()`. No HTTP server, no database, no mocks of HTTP requests. The service test is fast and exact.
+
+---
+
 ## Decision summary
 
 | If you need... | Use... |
@@ -373,8 +582,11 @@ bus.publish(OrderPaid(order_id="x", amount=Decimal("9.99"), paid_at=now()))
 | Choose one of several similar objects from config | Factory function |
 | Build families of related objects | Abstract factory |
 | Swap algorithm at runtime | Strategy via Protocol (or a Callable) |
+| Same algorithm shape, different steps | Template Method |
+| Two orthogonal hierarchies (shape × renderer) | Bridge |
 | Construct objects with many optional fields | Fluent builder returning `Self` |
 | Inject collaborators | Constructor injection. Framework only if it gets nested |
+| Decouple business logic from persistence + UI | MVC / layered architecture |
 | Transactional multi-repo writes | Unit of Work |
 | Decouple producers from consumers | Event bus |
 | Reads diverge from writes | CQRS |
